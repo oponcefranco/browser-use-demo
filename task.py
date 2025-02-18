@@ -1,6 +1,6 @@
 """
-Navigate to CMS (staging) and navigate to Search Feeds
-----------------------------------------
+Navigate to provided URL and perform task
+------------------------------------------
 """
 
 import os
@@ -26,24 +26,30 @@ from browser_use import Agent, Controller
 class AppConfig:
 
     openai_api_key: SecretStr | None
-    chrome_path: str
-    title: str
-    subtitle: str
-    description: str
+    chromium_path: str
+    base_url: str
+    auth_username: SecretStr | None
+    auth_password: SecretStr | None
     headless: bool = False
     model: str = "gpt-4o-mini"
-    base_url: str = ""
 
 
 # Customize these settings
 config = AppConfig(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
-    chrome_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    title="TEST TITLE 1-2-3",
-    subtitle="TEST SUBTITLE 1-2-3",
-    description="This is a sample description, lorem ipsum.",
+    chromium_path="/Applications/Chromium.app/Contents/MacOS/Chromium",
     headless=False,
+    base_url=os.getenv("BASE_URL"),
+    auth_username=os.getenv("AUTH_USERNAME"),
+    auth_password=os.getenv("AUTH_PASSWORD")
 )
+
+cookie = [{
+    "name": "jwt",
+    "value": os.getenv("JWT_TOKEN"),
+    "domain": os.getenv('DOMAIN'),
+    "path": "/"
+}]
 
 
 def create_agent(browser_config: AppConfig) -> Agent:
@@ -53,49 +59,47 @@ def create_agent(browser_config: AppConfig) -> Agent:
     browser = Browser(
         config=BrowserConfig(
             headless=browser_config.headless,
-            chrome_instance_path=browser_config.chrome_path,
+            chrome_instance_path=browser_config.chromium_path,
         )
     )
 
     file_path = os.path.join(os.path.dirname(__file__), 'cookie.txt')
-    context = BrowserContext(browser=browser, config=BrowserContextConfig(cookies_file=file_path))
+    cookie_file = ''.join(map(str, cookie))
+    browser_context = BrowserContext(browser=browser, config=BrowserContextConfig(cookies_file=file_path))
 
     controller = Controller()
 
     # Create the agent with detailed instructions
     return Agent(
-        task=f"""Navigate to the provide URL and use top navigation menu to select Articles, select Search, and click on search-home-feed-alias link.
+        task=f"""Navigate to the provide URL and use top navigation menu to select Create Account.
 
-        Here are the specific steps:
+                Here are the specific steps:
 
-        1. Go to {browser_config.base_url}. See the text input field at the top of the page that says "Collection"
-        2. Look for the text input field at the top of the page that says "What's happening?"
-        3. Click the input field and type exactly this message:
-        4. Find and click the "Post" button (look for attributes: 'button' and 'data-testid="tweetButton"')
-        5. Do not click on the '+' button which will add another tweet.
+                1. Go to {browser_config.base_url} 
+                3. See the header text at the top of the page that says "Home" (look for attribute: 'data-qa="header_nav_home"')
+                4. From top navigation menu, click on "Account" link (look for attribute: 'data-qa="account_header"') 
+                5. Click on "Create account" dropdown option (look for attribute: 'data-qa="create_account_menu_button"')
+                6. Find input to Enter First and Last Name (look for attribute: 'data-qa="create_account_name_input"')
+                7. Find input to Enter email (look for attribute: 'data-qa="create_account_email_input"')
+                    * email must have a domain '@goattest.com'
+                    * name of email starts with "qauto" + unix timestamp
+                7. Find input to Enter Password (look for attribute: 'data-qa="create_account_password_input"')
+                    * new password must be "testing123
 
-        6. Navigate to
-        7. Before replying, understand the context of the tweet by scrolling down and reading the comments.
-        8. Reply to the tweet under 50 characters.
-
-        Important:
-        - Wait for each element to load before interacting
-        - Make sure the message is typed exactly as shown
-        - Verify the post button is clickable before clicking
-        - Do not click on the '+' button which will add another tweet
-        """,
+                Important:
+                - Wait for each element to load before interacting
+                """,
         llm=llm,
+        max_actions_per_step=5,
         controller=controller,
-        browser=browser,
+        browser_context=browser_context
     )
 
 
 async def navigate(agent: Agent):
-
     try:
-        await agent.run(max_steps=100)
-        agent.create_history_gif()
-        print("Navigation successful!")
+        await agent.run(max_steps=25)
+        # print("Navigation successful!")
     except Exception as e:
         print(f"Error navigating to destination: {str(e)}")
 

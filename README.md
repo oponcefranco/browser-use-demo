@@ -13,6 +13,8 @@ This project demonstrates how to use AI agents to automate browser tasks. The de
 - 🎯 **Smart Element Detection**: AI identifies form fields and buttons without explicit selectors
 - 📝 **Comprehensive Logging**: Detailed logging for debugging and monitoring
 - ⚙️ **Configurable**: Easy customization via environment variables
+- 🧩 **Modular Architecture**: Clean separation of concerns with dedicated modules for config, browser, agent, and tasks
+- ✅ **Fully Tested**: Comprehensive test suite with unit and integration tests
 
 ## Prerequisites
 
@@ -131,35 +133,47 @@ The script will:
 
 ```
 browser-use-demo/
-├── task.py              # Main application file
-├── tests/               # Unit tests
-│   ├── __init__.py      # Test package initialization
-│   ├── test_config.py   # Configuration validation tests
-│   └── test_cli.py      # CLI argument parsing tests
-├── .env                 # Environment configuration (create from .env.example)
-├── .env.example         # Template for environment variables
-├── Pipfile              # Python dependencies
-├── Pipfile.lock         # Locked dependency versions
-├── conftest.py          # Pytest configuration
-├── cookie.txt           # Cookie template (optional)
-├── .gitignore           # Git ignore patterns
-├── .python-version      # Python version specification
-├── LICENSE              # MIT License
-└── README.md            # This file
+├── browser_automation/           # Main package (modular design)
+│   ├── __init__.py              # Package exports
+│   ├── config.py                # Configuration management
+│   ├── agent_factory.py         # AI agent creation
+│   ├── browser_factory.py       # Browser initialization
+│   ├── runner.py                # Task execution orchestration
+│   └── tasks/                   # Task implementations
+│       ├── __init__.py
+│       ├── base.py              # Base task interface
+│       └── login_task.py        # Login automation task
+├── task.py                      # Main entry point
+├── cli.py                       # Command-line interface
+├── tests/                       # Comprehensive test suite
+│   ├── test_config.py           # Config validation (156 tests)
+│   ├── test_cli.py              # CLI parsing (6 tests)
+│   ├── test_agent_factory.py   # Agent factory (320 tests)
+│   ├── test_browser_factory.py # Browser factory (198 tests)
+│   ├── test_runner.py           # Task runner (259 tests)
+│   ├── test_tasks.py            # Task implementations (321 tests)
+│   └── test_integration.py     # End-to-end (354 tests)
+├── .env                         # Environment configuration
+├── .env.example                 # Environment template
+├── Pipfile                      # Python dependencies
+└── conftest.py                  # Pytest configuration
 ```
 
 ## How It Works
 
-1. **Configuration Loading**: Environment variables are loaded and validated
-2. **Agent Initialization**: GPT-4 model is configured with task instructions
-3. **Browser Setup**: Chromium browser is launched with specified configuration
-4. **Task Execution**: AI agent interprets natural language instructions and performs actions:
-   - Navigates to URL
-   - Identifies form elements
-   - Enters credentials
-   - Submits form
-   - Validates results
-5. **Cleanup**: Browser is closed and results are logged
+The application uses a modular architecture with clear separation of concerns:
+
+1. **Config Module** (`config.py`): Validates and manages environment variables
+2. **Browser Factory** (`browser_factory.py`): Initializes Chromium with proper configuration
+3. **Agent Factory** (`agent_factory.py`): Creates AI agent with GPT-4 model and task instructions
+4. **Task System** (`tasks/`): Defines task interface and implementations (e.g., login flow)
+5. **Runner** (`runner.py`): Orchestrates task execution and handles cleanup
+
+**Execution Flow:**
+1. CLI parses arguments → Config loads/validates environment
+2. Runner initializes browser and agent factories
+3. Task executes: navigate → interact → validate
+4. Results logged and browser cleanup
 
 ## Security Notes
 
@@ -200,33 +214,37 @@ Error: Rate limit exceeded
 
 ### Using a Different Model
 
-Edit `.env` or modify `task.py`:
-```python
-config = AppConfig(
-    model="gpt-4o",  # Use GPT-4 instead of gpt-4o-mini
-    # ... other config
-)
+Use CLI argument or modify config:
+```bash
+# Via CLI
+python task.py --model gpt-4o
+
+# Or set default in browser_automation/config.py
 ```
 
 ### Headless Mode
 
-For running without visible browser:
-```python
-config = AppConfig(
-    headless=True,  # Run in headless mode
-    # ... other config
-)
+```bash
+python task.py --headless
 ```
 
-### Custom Task Instructions
+### Custom Tasks
 
-Modify the task string in `task.py` `create_agent()` function to automate different workflows.
+Create new task classes in `browser_automation/tasks/`:
+```python
+from browser_automation.tasks.base import BaseTask
+
+class MyTask(BaseTask):
+    async def execute(self, agent):
+        # Your automation logic
+        pass
+```
 
 ## Development
 
 ### Running Tests
 
-The project includes comprehensive unit tests for configuration validation and CLI argument parsing.
+Comprehensive test suite covering unit, integration, and end-to-end scenarios.
 
 ```bash
 # Install dev dependencies
@@ -235,23 +253,27 @@ pipenv install --dev
 # Run all tests
 pipenv run pytest
 
-# Run tests with verbose output
-pipenv run pytest -v
+# Run with coverage report
+pipenv run pytest --cov=browser_automation --cov=cli --cov=task
 
-# Run specific test file
+# Run specific test modules
 pipenv run pytest tests/test_config.py -v
-
-# Run with coverage
-pipenv run pytest --cov=task
+pipenv run pytest tests/test_integration.py -v
 ```
 
 **Test Coverage:**
-- Configuration validation (14 test cases)
-- CLI argument parsing (6 test cases)
-- All tests passing ✅
+- **Config validation**: Environment variables, SecretStr protection, validation logic
+- **Agent factory**: Model initialization, instruction building, configuration
+- **Browser factory**: Chromium setup, headless mode, custom paths
+- **Task runner**: Execution flow, error handling, cleanup
+- **Task implementations**: Login flow, base task interface
+- **Integration tests**: End-to-end automation scenarios
+- **CLI parsing**: Argument validation and overrides
+
+All modules fully tested with mocks for external dependencies (OpenAI, Playwright).
 
 ### Code Style
-This project follows PEP 8 guidelines and uses type hints throughout for better code clarity and IDE support.
+Modular architecture following SOLID principles with type hints throughout.
 
 ## Resources
 

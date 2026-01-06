@@ -2,7 +2,7 @@
 
 import sys
 from unittest.mock import patch
-from task import parse_arguments
+from cli import CLI
 
 
 class TestCLIArguments:
@@ -11,7 +11,7 @@ class TestCLIArguments:
     def test_default_arguments(self):
         """Test default arguments (no CLI flags)."""
         with patch.object(sys, 'argv', ['task.py']):
-            args = parse_arguments()
+            args = CLI.parse_arguments()
             assert args.headless is False
             assert args.url is None
             assert args.model is None
@@ -19,7 +19,7 @@ class TestCLIArguments:
     def test_headless_flag(self):
         """Test --headless flag."""
         with patch.object(sys, 'argv', ['task.py', '--headless']):
-            args = parse_arguments()
+            args = CLI.parse_arguments()
             assert args.headless is True
             assert args.url is None
             assert args.model is None
@@ -28,7 +28,7 @@ class TestCLIArguments:
         """Test --url flag."""
         test_url = 'https://example.com/login'
         with patch.object(sys, 'argv', ['task.py', '--url', test_url]):
-            args = parse_arguments()
+            args = CLI.parse_arguments()
             assert args.headless is False
             assert args.url == test_url
             assert args.model is None
@@ -37,7 +37,7 @@ class TestCLIArguments:
         """Test --model flag."""
         test_model = 'gpt-4o'
         with patch.object(sys, 'argv', ['task.py', '--model', test_model]):
-            args = parse_arguments()
+            args = CLI.parse_arguments()
             assert args.headless is False
             assert args.url is None
             assert args.model == test_model
@@ -47,7 +47,7 @@ class TestCLIArguments:
         test_url = 'https://example.com/login'
         test_model = 'gpt-4o'
         with patch.object(sys, 'argv', ['task.py', '--headless', '--url', test_url, '--model', test_model]):
-            args = parse_arguments()
+            args = CLI.parse_arguments()
             assert args.headless is True
             assert args.url == test_url
             assert args.model == test_model
@@ -56,7 +56,7 @@ class TestCLIArguments:
         """Test that --help flag exits (argparse behavior)."""
         with patch.object(sys, 'argv', ['task.py', '--help']):
             try:
-                parse_arguments()
+                CLI.parse_arguments()
                 assert False, "Should have raised SystemExit"
             except SystemExit as e:
                 # argparse exits with code 0 for --help

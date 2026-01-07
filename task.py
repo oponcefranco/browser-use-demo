@@ -1,112 +1,93 @@
 """
 Navigate to provided URL and perform task
 ------------------------------------------
+Main entry point for browser automation.
 """
-
-import os
 import sys
-from dataclasses import dataclass
+import logging
+import asyncio
 
-from browser_use.browser.context import BrowserContextConfig, BrowserContext
 from dotenv import load_dotenv
-from pydantic import SecretStr
+
+from browser_automation.config import ConfigLoader, ConfigValidator
+from browser_automation.browser_factory import BrowserFactory
+from browser_automation.agent_factory import AgentFactory
+from browser_automation.tasks.login_task import LoginTask
+from browser_automation.tasks.base import TaskCredentials
+from browser_automation.runner import TaskRunner
+from cli import CLI
 
 load_dotenv()
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import asyncio
-from langchain_openai import ChatOpenAI
-from browser_use.browser.browser import Browser, BrowserConfig
-from browser_use import Agent, Controller
-
-
-# ============ Configuration Section ============
-@dataclass
-class AppConfig:
-
-    openai_api_key: SecretStr | None
-    chromium_path: str
-    base_url: str
-    auth_username: SecretStr | None
-    auth_password: SecretStr | None
-    headless: bool = False
-    model: str = "gpt-4o-mini"
-
-
-# Customize these settings
-config = AppConfig(
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    chromium_path="/Applications/Chromium.app/Contents/MacOS/Chromium",
-    headless=False,
-    base_url=os.getenv("BASE_URL"),
-    auth_username=os.getenv("AUTH_USERNAME"),
-    auth_password=os.getenv("AUTH_PASSWORD")
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-
-cookie = [{
-    "name": "jwt",
-    "value": os.getenv("JWT_TOKEN"),
-    "domain": os.getenv('DOMAIN'),
-    "path": "/"
-}]
+logger = logging.getLogger(__name__)
 
 
-def create_agent(browser_config: AppConfig) -> Agent:
-
-    llm = ChatOpenAI(model=browser_config.model, api_key=browser_config.openai_api_key)
-
-    browser = Browser(
-        config=BrowserConfig(
-            headless=browser_config.headless,
-            chrome_instance_path=browser_config.chromium_path,
-        )
-    )
-
-    file_path = os.path.join(os.path.dirname(__file__), 'cookie.txt')
-    cookie_file = ''.join(map(str, cookie))
-    browser_context = BrowserContext(browser=browser, config=BrowserContextConfig(cookies_file=file_path))
-
-    controller = Controller()
-
-    # Create the agent with detailed instructions
-    return Agent(
-        task=f"""Navigate to the provide URL and use top navigation menu to select Create Account.
-
-                Here are the specific steps:
-
-                1. Go to {browser_config.base_url} 
-                3. See the header text at the top of the page that says "Home" (look for attribute: 'data-qa="header_nav_home"')
-                4. From top navigation menu, click on "Account" link (look for attribute: 'data-qa="account_header"') 
-                5. Click on "Create account" dropdown option (look for attribute: 'data-qa="create_account_menu_button"')
-                6. Find input to Enter First and Last Name (look for attribute: 'data-qa="create_account_name_input"')
-                7. Find input to Enter email (look for attribute: 'data-qa="create_account_email_input"')
-                    * email must have a domain '@goattest.com'
-                    * name of email starts with "qauto" + unix timestamp
-                7. Find input to Enter Password (look for attribute: 'data-qa="create_account_password_input"')
-                    * new password must be "testing123
-
-                Important:
-                - Wait for each element to load before interacting
-                """,
-        llm=llm,
-        max_actions_per_step=5,
-        controller=controller,
-        browser_context=browser_context
-    )
-
-
-async def navigate(agent: Agent):
+def main() -> None:
+    """Main entry point for the browser automation task."""
     try:
-        await agent.run(max_steps=25)
-        # print("Navigation successful!")
+        # Parse CLI arguments
+        args = CLI.parse_arguments()
+
+        # Load configuration
+        config = ConfigLoader.from_env()
+
+        # Apply CLI overrides
+        if args.headless:
+            config.headless = True
+            logger.info("Headless mode enabled via CLI argument")
+
+        if args.url:
+            config.base_url = args.url
+            logger.info(f"BASE_URL overridden via CLI: {args.url}")
+
+        if args.model:
+            config.model = args.model
+            logger.info(f"Model overridden via CLI: {args.model}")
+
+        # Validate configuration
+        logger.info("Starting browser automation task...")
+        ConfigValidator.validate(config)
+        logger.info("Configuration validated successfully")
+
+        # Create browser and context
+        browser = BrowserFactory.create_browser(config)
+        browser_context = BrowserFactory.create_context(browser)
+
+        # Create task
+        # Note: Config validation ensures these are not None
+        assert config.auth_username is not None, "auth_username should be validated"
+        assert config.auth_password is not None, "auth_password should be validated"
+
+        credentials = TaskCredentials(
+            username=config.auth_username.get_secret_value(),
+            password=config.auth_password.get_secret_value()
+        )
+        task = LoginTask(url=config.base_url, credentials=credentials)
+
+        # Create agent
+        agent = AgentFactory.create_agent(
+            config=config,
+            task=task,
+            browser_context=browser_context
+        )
+
+        # Run task
+        asyncio.run(TaskRunner.run(agent, browser_context))
+
+        logger.info("Task completed successfully!")
+
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error navigating to destination: {str(e)}")
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        sys.exit(1)
 
-
-def main():
-    agent = create_agent(config)
-    asyncio.run(navigate(agent))
 
 if __name__ == "__main__":
     main()
